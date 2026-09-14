@@ -15,17 +15,16 @@ export function renderHeroGraphic(): string {
       <defs>
         <pattern id="signal-dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.7" fill="#7290a5" opacity=".23"/></pattern>
         <radialGradient id="signal-light"><stop stop-color="#78e6c3" stop-opacity=".065"/><stop offset="1" stop-color="#78e6c3" stop-opacity="0"/></radialGradient>
+        <radialGradient id="signal-hover-light"><stop stop-color="#78e6c3" stop-opacity=".2"/><stop offset="1" stop-color="#78e6c3" stop-opacity="0"/></radialGradient>
       </defs>
       <rect x="40" y="44" width="440" height="404" fill="url(#signal-dots)"/>
       <ellipse cx="260" cy="270" rx="225" ry="210" fill="url(#signal-light)"/>
+      <ellipse class="hero-graphic__spotlight" cx="260" cy="250" rx="150" ry="145" fill="url(#signal-hover-light)" opacity="0"/>
       <ellipse cx="260" cy="250" rx="202" ry="104" transform="rotate(-37 260 250)" stroke="#75b9aa" stroke-opacity=".23" stroke-dasharray="3 7"/>
       <g class="hero-graphic__grid" stroke="#6ddcbb" stroke-width=".9" stroke-linejoin="round">${createWireframeLines(
         density,
       )
-        .map(
-          (line) =>
-            `<path d="${linePath(line, density.samples)}" opacity="${line.opacity.toFixed(2)}"/>`,
-        )
+        .map((line) => `<path d="${linePath(line)}" opacity="${line.opacity.toFixed(2)}"/>`)
         .join('')}</g>
       <g class="hero-graphic__nodes">${travellingNodes
         .map((node) => {

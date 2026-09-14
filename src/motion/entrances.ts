@@ -43,7 +43,7 @@ export function initializeEntrances(): () => void {
   );
 
   document.querySelectorAll('[data-reveal]').forEach((element) => observer.observe(element));
-  if (!window.location.hash || window.location.hash === '#home') {
+  if (!window.location.hash || ['#home', '#main-content'].includes(window.location.hash)) {
     document.querySelectorAll('[data-hero-enter]').forEach((element, index) => {
       enter(element, index * motion.stagger, true);
     });

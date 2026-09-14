@@ -6,6 +6,11 @@
 .hero-graphic__surface {
   width: 100%;
   height: auto;
+  /* Keep the hover region stable across the gaps between SVG strokes. */
+  pointer-events: all;
+}
+.hero-graphic__surface > * {
+  pointer-events: none;
 }
 .hero-graphic__label {
   position: absolute;

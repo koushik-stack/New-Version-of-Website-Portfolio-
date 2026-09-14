@@ -1,5 +1,6 @@
 import { readMotionSettings, reducedMotionQuery } from '../motion/settings';
 import {
+  createSurfaceFrame,
   createWireframeLines,
   fullTurn,
   linePath,
@@ -14,8 +15,18 @@ const pauseStorageKey = 'portfolio-motion-paused';
 export function initializeHeroGraphic(): () => void {
   const root = document.querySelector<HTMLElement>('[data-hero-graphic]');
   const grid = root?.querySelector<SVGGElement>('.hero-graphic__grid');
+  const surface = root?.querySelector<SVGSVGElement>('.hero-graphic__surface');
+  const spotlight = root?.querySelector<SVGEllipseElement>('.hero-graphic__spotlight');
   const button = root?.querySelector<HTMLButtonElement>('.motion-toggle');
-  if (!root || !grid || !button || typeof IntersectionObserver === 'undefined') return () => {};
+  if (
+    !root ||
+    !grid ||
+    !surface ||
+    !spotlight ||
+    !button ||
+    typeof IntersectionObserver === 'undefined'
+  )
+    return () => {};
 
   const motion = readMotionSettings();
   const preference = window.matchMedia(reducedMotionQuery);
@@ -43,6 +54,9 @@ export function initializeHeroGraphic(): () => void {
   let previousTime: number | null = null;
   let elapsed = 0;
   let inViewport = false;
+  let bounds: DOMRect | null = null;
+  let hover = 0;
+  let targetHover = 0;
   const pointer: Point = { x: 0, y: 0 };
   const target: Point = { x: 0, y: 0 };
 
@@ -50,19 +64,19 @@ export function initializeHeroGraphic(): () => void {
     const interpolation = 1 - Math.exp(-delta / settings.pointerResponse);
     pointer.x += (target.x - pointer.x) * interpolation;
     pointer.y += (target.y - pointer.y) * interpolation;
+    hover += (targetHover - hover) * interpolation;
     const phase = (elapsed / motion.ambient) * fullTurn;
-    paths.forEach((path, index) =>
-      path.setAttribute('d', linePath(lines[index], density.samples, phase, pointer)),
-    );
+    const projection = createSurfaceFrame(phase, pointer);
+    paths.forEach((path, index) => path.setAttribute('d', linePath(lines[index], projection)));
     nodes.forEach((node, index) => {
-      const point = nodePoint(travellingNodes[index], phase, pointer);
+      const point = nodePoint(travellingNodes[index], phase, projection);
       node.setAttribute('transform', `translate(${point.x.toFixed(2)} ${point.y.toFixed(2)})`);
     });
     markers.forEach((marker, index) => {
       const offset = phase + index * 1.8;
       marker.setAttribute(
         'transform',
-        `translate(${(Math.sin(offset) * settings.markerDrift).toFixed(2)} ${(Math.cos(offset) * settings.markerDrift).toFixed(2)})`,
+        `translate(${(Math.sin(offset) * settings.markerDrift + pointer.x * 5).toFixed(2)} ${(Math.cos(offset) * settings.markerDrift + pointer.y * 5).toFixed(2)})`,
       );
     });
     const pulse = (elapsed / motion.pulse) * fullTurn;
@@ -70,6 +84,9 @@ export function initializeHeroGraphic(): () => void {
       point.setAttribute('opacity', (0.68 + Math.cos(pulse + index * 2) * 0.22).toFixed(3)),
     );
     indicator.style.opacity = (0.8 + Math.cos(pulse) * 0.2).toFixed(3);
+    spotlight!.setAttribute('cx', (260 + pointer.x * 200).toFixed(2));
+    spotlight!.setAttribute('cy', (250 + pointer.y * 190).toFixed(2));
+    spotlight!.setAttribute('opacity', hover.toFixed(3));
   }
 
   function tick(timestamp: number) {
@@ -119,6 +136,7 @@ export function initializeHeroGraphic(): () => void {
       if (reduced) {
         elapsed = 0;
         pointer.x = pointer.y = target.x = target.y = 0;
+        hover = targetHover = 0;
         draw();
       }
     }
@@ -139,26 +157,28 @@ export function initializeHeroGraphic(): () => void {
 
   const resetPointer = () => {
     target.x = target.y = 0;
+    targetHover = 0;
+    bounds = null;
   };
-  root.addEventListener(
-    'pointermove',
-    (event) => {
-      if (!pointerDevice.matches || event.pointerType === 'touch' || paused || preference.matches)
-        return;
-      const bounds = root.getBoundingClientRect();
-      target.x = Math.max(
-        -1,
-        Math.min(1, ((event.clientX - bounds.left) / bounds.width - 0.5) * 2),
-      );
-      target.y = Math.max(
-        -1,
-        Math.min(1, ((event.clientY - bounds.top) / bounds.height - 0.5) * 2),
-      );
-    },
-    { signal, passive: true },
-  );
-  root.addEventListener('pointerleave', resetPointer, { signal });
-  root.addEventListener('pointercancel', resetPointer, { signal });
+  const updatePointer = (event: PointerEvent) => {
+    if (!pointerDevice.matches || event.pointerType === 'touch' || paused || preference.matches)
+      return;
+    // Read layout once on entry, then only after scrolling or resizing.
+    bounds ??= surface.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    targetHover = 1;
+    target.x = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width - 0.5) * 2));
+    target.y = Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height - 0.5) * 2));
+  };
+  const invalidateBounds = () => {
+    bounds = null;
+  };
+  surface.addEventListener('pointerenter', updatePointer, { signal, passive: true });
+  surface.addEventListener('pointermove', updatePointer, { signal, passive: true });
+  surface.addEventListener('pointerleave', resetPointer, { signal });
+  surface.addEventListener('pointercancel', resetPointer, { signal });
+  window.addEventListener('scroll', invalidateBounds, { signal, passive: true, capture: true });
+  window.addEventListener('resize', invalidateBounds, { signal, passive: true });
   window.addEventListener('blur', resetPointer, { signal });
   pointerDevice.addEventListener('change', resetPointer, { signal });
   document.addEventListener(
@@ -170,7 +190,14 @@ export function initializeHeroGraphic(): () => void {
     { signal },
   );
   preference.addEventListener('change', synchronize, { signal });
-  mobile.addEventListener('change', updateDensity, { signal });
+  mobile.addEventListener(
+    'change',
+    () => {
+      resetPointer();
+      updateDensity();
+    },
+    { signal },
+  );
   button.addEventListener(
     'click',
     () => {
