@@ -1,0 +1,100 @@
+:root {
+  --motion-feedback: 180ms;
+  --motion-menu: 300ms;
+  --motion-entrance: 560ms;
+  --motion-stagger: 80ms;
+  --motion-ambient: 24000ms;
+  --motion-pulse: 4000ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-feedback: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --motion-distance: 14px;
+  --transition: var(--motion-feedback) var(--motion-ease-feedback);
+}
+
+.button .icon,
+.text-link .icon,
+.primary-navigation .icon,
+.hero__footer .icon,
+.back-to-top .icon,
+summary .icon {
+  transition: transform var(--transition);
+}
+.button:focus-visible .icon,
+.text-link:focus-visible .icon,
+.primary-navigation a:focus-visible .icon {
+  transform: translateX(3px);
+}
+.project-card {
+  transition:
+    translate var(--motion-entrance) var(--motion-ease),
+    border-color var(--transition),
+    background-color var(--transition);
+}
+.project-card:focus-within {
+  border-color: #78e6c36b;
+}
+summary {
+  transition:
+    color var(--transition),
+    background-color var(--transition);
+}
+summary:focus-visible {
+  color: var(--color-accent);
+}
+details[open] > :not(summary) {
+  animation: disclosure-enter var(--motion-menu) var(--motion-ease);
+}
+@keyframes disclosure-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .button:hover .icon,
+  .text-link:hover .icon,
+  .primary-navigation a:hover .icon {
+    transform: translateX(3px);
+  }
+  .hero__footer a:hover .icon {
+    transform: translateY(3px);
+  }
+  .back-to-top:hover .icon {
+    transform: translateY(-3px);
+  }
+  .project-card:hover {
+    translate: 0 -4px;
+    border-color: #78e6c34d;
+    background-color: #10203599;
+  }
+  summary:hover {
+    color: var(--color-accent);
+  }
+}
+.button:active {
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .project-card:hover {
+    translate: none;
+  }
+  .button:hover,
+  a:hover .icon,
+  a:focus-visible .icon,
+  .project-card:hover .project-card__image {
+    transform: none;
+  }
+}

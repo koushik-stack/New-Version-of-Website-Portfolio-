@@ -1,0 +1,180 @@
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--header-height);
+  background: #0b192bf2;
+  border-bottom: 1px solid #26384d80;
+  backdrop-filter: blur(16px);
+}
+.site-header__inner {
+  --width-page: var(--width-header);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 44px;
+  font-weight: var(--weight-heading);
+  font-size: 1.0625rem;
+  letter-spacing: -0.035em;
+}
+.wordmark__symbol {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 36px;
+  border: 1px solid #78e6c367;
+  color: var(--color-accent);
+  font-size: 1.5rem;
+  line-height: 1;
+  border-radius: 5px 5px 12px 5px;
+  padding-bottom: 4px;
+}
+.primary-navigation ul {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+}
+.primary-navigation a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 7px;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  font-weight: 700;
+}
+.primary-navigation li:not(:last-child) a::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--color-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--motion-menu) var(--motion-ease);
+}
+.primary-navigation li a[aria-current]::after,
+.primary-navigation li a:focus-visible::after {
+  transform: scaleX(1);
+}
+.primary-navigation a:hover,
+.primary-navigation a[aria-current] {
+  color: var(--color-accent);
+}
+.nav-number {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+.primary-navigation li:last-child a {
+  padding: 8px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+}
+.primary-navigation li:last-child .icon {
+  height: 14px;
+  width: 14px;
+  margin-left: 6px;
+}
+.menu-toggle {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .primary-navigation li a:hover::after {
+    transform: scaleX(1);
+  }
+}
+@media (max-width: 767px) {
+  .site-header__inner {
+    position: relative;
+  }
+  .wordmark {
+    font-size: 1rem;
+  }
+  .wordmark__symbol {
+    width: 30px;
+    height: 32px;
+    font-size: 1.25rem;
+  }
+  .menu-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-width: 88px;
+    min-height: 44px;
+    padding: 8px 0 8px 12px;
+    border: 0;
+    background: transparent;
+    font-size: 0.75rem;
+    font-weight: var(--weight-ui);
+  }
+  .menu-toggle__lines {
+    position: relative;
+    width: 20px;
+    height: 12px;
+  }
+  .menu-toggle__lines::before,
+  .menu-toggle__lines::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 5px;
+    width: 20px;
+    height: 1px;
+    background: var(--color-accent);
+    transition: transform var(--motion-menu) var(--motion-ease);
+  }
+  .menu-toggle__lines::before {
+    transform: translateY(-5px);
+  }
+  .menu-toggle__lines::after {
+    transform: translateY(5px);
+  }
+  .menu-toggle[aria-expanded='true'] .menu-toggle__lines::before {
+    transform: rotate(45deg);
+  }
+  .menu-toggle[aria-expanded='true'] .menu-toggle__lines::after {
+    transform: rotate(-45deg);
+  }
+  .primary-navigation {
+    position: absolute;
+    top: calc(var(--header-height) - 1px);
+    left: calc(-1 * var(--page-gutter));
+    right: calc(-1 * var(--page-gutter));
+    padding: 16px var(--page-gutter) 24px;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    box-shadow: 0 16px 30px #020c1b40;
+  }
+  .primary-navigation ul {
+    display: grid;
+    gap: 6px;
+  }
+  .primary-navigation a {
+    padding: 8px 12px;
+    min-height: 48px;
+    font-size: 0.9375rem;
+  }
+  .primary-navigation li:not(:last-child) a::after {
+    left: 12px;
+    right: 12px;
+    opacity: 0.45;
+  }
+  .nav-number {
+    min-width: 24px;
+  }
+  .primary-navigation li:last-child a {
+    padding: 8px 12px;
+    border-color: transparent;
+  }
+}

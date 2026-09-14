@@ -1,0 +1,105 @@
+.hero-graphic {
+  position: relative;
+  margin-top: 24px;
+  min-width: 0;
+}
+.hero-graphic__surface {
+  width: 100%;
+  height: auto;
+}
+.hero-graphic__label {
+  position: absolute;
+  left: 10%;
+  top: 3%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: var(--weight-label);
+}
+.status-dot {
+  flex: 0 0 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow:
+    0 0 0 4px #78e6c312,
+    0 0 12px #78e6c333;
+}
+.hero-graphic__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-inline: 10%;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+.hero-graphic__footer > span {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.06em;
+  color: var(--color-subtle);
+}
+.motion-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 0 6px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 0.625rem;
+  font-weight: var(--weight-label);
+}
+.motion-toggle .icon {
+  width: 12px;
+  height: 12px;
+}
+.motion-toggle:disabled {
+  cursor: default;
+  color: var(--color-subtle);
+}
+.motion-toggle:focus-visible {
+  color: var(--color-accent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .motion-toggle:hover:not(:disabled) {
+    color: var(--color-accent);
+  }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .hero-graphic__label {
+    font-size: 0.625rem;
+  }
+  .hero-graphic__footer {
+    margin-inline: 5%;
+    gap: 6px;
+  }
+  .hero-graphic__footer > span {
+    font-size: 0.5rem;
+    letter-spacing: 0;
+  }
+}
+@media (max-width: 767px) {
+  .hero-graphic {
+    width: min(360px, 100%);
+    justify-self: center;
+    margin-top: 6px;
+  }
+  .hero-graphic__label {
+    font-size: 0.625rem;
+  }
+  .hero-graphic__footer {
+    margin-inline: 4%;
+    gap: 8px;
+  }
+  .hero-graphic__footer > span {
+    font-size: 0.5rem;
+    letter-spacing: 0.02em;
+  }
+}

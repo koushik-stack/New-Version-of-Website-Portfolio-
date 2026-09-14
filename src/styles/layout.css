@@ -1,0 +1,115 @@
+.container {
+  width: min(var(--width-page), calc(100% - var(--page-gutter) * 2));
+  margin-inline: auto;
+}
+.section {
+  position: relative;
+  margin-top: var(--space-section);
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  margin-bottom: var(--space-7);
+}
+.section-number {
+  flex-shrink: 0;
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+.section-heading h2 {
+  font-size: clamp(1.65rem, 2.5vw, 2rem);
+  letter-spacing: -0.035em;
+  font-weight: var(--weight-heading);
+}
+.section-heading__line {
+  width: 180px;
+  max-width: 22%;
+  height: 1px;
+  margin-left: 10px;
+  background: var(--color-border);
+}
+.section-introduction {
+  margin-top: -26px;
+  margin-bottom: 48px;
+  font-size: 0.9375rem;
+}
+.anchor-alias {
+  position: absolute;
+  top: 0;
+}
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  padding-block: 32px;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.75rem;
+}
+.site-footer p {
+  color: var(--color-subtle);
+}
+.footer-divider {
+  padding-inline: 12px;
+  color: var(--color-border);
+}
+.site-footer nav {
+  display: flex;
+  gap: 24px;
+}
+.site-footer .text-link {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+.back-to-top {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-muted);
+}
+.back-to-top:hover {
+  color: var(--color-accent);
+}
+.back-to-top .icon {
+  width: 16px;
+  height: 16px;
+}
+.no-script {
+  max-width: 640px;
+  margin: 100px auto;
+  padding: 24px;
+}
+.no-script h1 {
+  margin-block: 20px;
+}
+.no-script a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+@media (max-width: 767px) {
+  .section-heading {
+    gap: 12px;
+    margin-bottom: 30px;
+  }
+  .section-heading__line {
+    flex: 1;
+    margin-left: 0;
+  }
+  .section-introduction {
+    margin-top: -10px;
+    margin-bottom: 32px;
+  }
+  .site-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding-block: 26px;
+  }
+  .site-footer nav {
+    flex-wrap: wrap;
+  }
+}

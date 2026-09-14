@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.tmp/
+.idea/
+.vscode/
+playwright-report/
+test-results/
+public/fonts/
+package-lock.json
+LICENSE.MD

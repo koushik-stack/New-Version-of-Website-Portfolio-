@@ -1,0 +1,60 @@
+@font-face {
+  font-family: Manrope;
+  src: url('/fonts/manrope-latin.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --color-background: #0b192b;
+  --color-surface: #102238;
+  --color-surface-hover: #152c43;
+  --color-text: #e8eef7;
+  --color-muted: #b0bed1;
+  --color-subtle: #99abc1;
+  --color-accent: #78e6c3;
+  --color-accent-hover: #a0f2d7;
+  --color-accent-tint: #78e6c30c;
+  --color-border: #26384d;
+  --font-body: Manrope, 'Segoe UI', sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --weight-hero: 750;
+  --weight-heading: 700;
+  --weight-title: 650;
+  --weight-ui: 600;
+  --weight-body: 500;
+  --weight-label: 500;
+  --text-small: 0.8125rem;
+  --text-body: 1rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --space-section: 7rem;
+  --width-page: 1120px;
+  --width-header: 1280px;
+  --page-gutter: 48px;
+  --radius-small: 5px;
+  --radius-card: 10px;
+  --header-height: 88px;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --page-gutter: 24px;
+    --space-section: 4.5rem;
+    --header-height: 72px;
+  }
+}
+
+@media (max-width: 359px) {
+  :root {
+    --page-gutter: 20px;
+  }
+}
