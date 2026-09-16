@@ -91,7 +91,7 @@ export function createParticleField(context: CanvasRenderingContext2D, compact: 
     const sp = Math.sin(pitch);
     const cr = Math.cos(roll);
     const sr = Math.sin(roll);
-    const response = 1 - Math.exp(-delta * 18);
+    const response = 1 - Math.exp(-delta * 14);
     let index = 0;
 
     const dot = (x: number, y: number, z: number, radius: number, alpha: number) => {

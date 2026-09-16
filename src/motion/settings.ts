@@ -14,13 +14,13 @@ export function readMotionSettings(element: Element = document.documentElement) 
     cssTimeToMilliseconds(styles.getPropertyValue(name), fallback);
 
   return {
-    feedback: milliseconds('--motion-feedback', 180),
-    menu: milliseconds('--motion-menu', 300),
-    entrance: milliseconds('--motion-entrance', 560),
-    stagger: milliseconds('--motion-stagger', 80),
-    ambient: milliseconds('--motion-ambient', 24000),
-    pulse: milliseconds('--motion-pulse', 4000),
-    distance: Number.parseFloat(styles.getPropertyValue('--motion-distance')) || 14,
+    feedback: milliseconds('--motion-feedback', 220),
+    menu: milliseconds('--motion-menu', 340),
+    entrance: milliseconds('--motion-entrance', 600),
+    stagger: milliseconds('--motion-stagger', 70),
+    ambient: milliseconds('--motion-ambient', 28000),
+    pulse: milliseconds('--motion-pulse', 4400),
+    distance: Number.parseFloat(styles.getPropertyValue('--motion-distance')) || 12,
     easing: styles.getPropertyValue('--motion-ease').trim(),
   };
 }

@@ -1,13 +1,13 @@
 :root {
-  --motion-feedback: 180ms;
-  --motion-menu: 300ms;
-  --motion-entrance: 560ms;
-  --motion-stagger: 80ms;
-  --motion-ambient: 24000ms;
-  --motion-pulse: 4000ms;
-  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --motion-ease-feedback: cubic-bezier(0.2, 0.7, 0.3, 1);
-  --motion-distance: 14px;
+  --motion-feedback: 220ms;
+  --motion-menu: 340ms;
+  --motion-entrance: 600ms;
+  --motion-stagger: 70ms;
+  --motion-ambient: 28000ms;
+  --motion-pulse: 4400ms;
+  --motion-ease: cubic-bezier(0.25, 0.85, 0.3, 1);
+  --motion-ease-feedback: cubic-bezier(0.25, 0.75, 0.3, 1);
+  --motion-distance: 12px;
   --transition: var(--motion-feedback) var(--motion-ease-feedback);
 }
 

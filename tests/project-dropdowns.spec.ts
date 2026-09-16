@@ -84,7 +84,7 @@ test('project dropdowns animate actual height, content, indicator, and adjacent 
   expect(opening.timing).toHaveLength(3);
   for (const timing of opening.timing) {
     expect(timing.duration).toBe(425);
-    expect(timing.easing).toBe('cubic-bezier(0.22, 1, 0.36, 1)');
+    expect(timing.easing).toBe('cubic-bezier(0.25, 0.85, 0.3, 1)');
   }
   const collapsed = opening.samples[0].height;
   const expanded = opening.samples.at(-1)!.height;

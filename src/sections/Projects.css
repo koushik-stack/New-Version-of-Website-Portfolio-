@@ -3,7 +3,7 @@
   gap: 32px;
 }
 .project-card {
-  --motion-entrance: 400ms;
+  --motion-entrance: 450ms;
   --motion-distance: 10px;
   display: grid;
   grid-template-columns: 1fr 1fr;
