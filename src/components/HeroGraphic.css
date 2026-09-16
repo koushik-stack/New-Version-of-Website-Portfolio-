@@ -1,16 +1,14 @@
 .hero-graphic {
   position: relative;
-  margin-top: 24px;
   min-width: 0;
 }
 .hero-graphic__surface {
+  display: block;
   width: 100%;
   height: auto;
-  /* Keep the hover region stable across the gaps between SVG strokes. */
-  pointer-events: all;
-}
-.hero-graphic__surface > * {
-  pointer-events: none;
+  aspect-ratio: 520 / 500;
+  /* Only the particles rotate; the canvas and hover region stay fixed. */
+  contain: strict;
 }
 .hero-graphic__label {
   position: absolute;
