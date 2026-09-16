@@ -21,7 +21,7 @@ export const experience: Experience[] = [
     role: 'Previous experience',
     period: 'Previously',
     description: ['Developed web software.', 'Contributed to AI research.'],
-    focus: ['Software engineering', 'Web development'],
+    focus: ['Software engineering', ''],
   },
   {
     company: 'Amazon & Meta',
