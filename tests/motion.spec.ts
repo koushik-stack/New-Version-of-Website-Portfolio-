@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { cssTimeToMilliseconds } from '../src/motion/settings';
 
 const graphicSelector = '[data-hero-graphic]';
-type DrawnPoint = [number, number, number];
+type DrawnPoint = [number, number, number, number];
 interface CapturedFrame {
   points: DrawnPoint[];
   draws: number;
@@ -49,7 +49,9 @@ async function installClock(page: Page) {
       return clear.apply(this, args);
     };
     CanvasRenderingContext2D.prototype.arc = function (...args) {
-      if (this.canvas.matches('.hero-graphic__surface')) points.push([args[0], args[1], args[2]]);
+      if (this.canvas.matches('.hero-graphic__surface')) {
+        points.push([args[0], args[1], args[2], this.globalAlpha]);
+      }
       return arc.apply(this, args);
     };
   });
@@ -92,7 +94,7 @@ async function startClock(page: Page) {
   return step(page, 1, 0);
 }
 
-test('mouse hover eases, reverses, and returns to rest at 60 and 144 Hz', async ({
+test('hover indents only nearby particles and returns smoothly at 30, 60, and 144 Hz', async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Requires a fine pointer.');
@@ -102,23 +104,38 @@ test('mouse hover eases, reverses, and returns to rest at 60 and 144 Hz', async 
   const restAtSixSeconds = await step(page, 300);
   const entered: CapturedFrame[] = [];
 
-  for (const fps of [60, 144]) {
+  for (const fps of [30, 60, 144]) {
     await page.mouse.move(0, 0);
     const initial = await startClock(page);
     const surface = page.locator('.hero-graphic__surface');
     const bounds = (await surface.boundingBox())!;
-    await page.mouse.move(bounds.x + bounds.width * 0.9, bounds.y + bounds.height * 0.15);
+    const cursor = { x: 385, y: 315 };
+    await page.mouse.move(
+      bounds.x + (bounds.width * cursor.x) / 520,
+      bounds.y + (bounds.height * cursor.y) / 500,
+    );
     expect((await page.evaluate(() => window.captureHeroFrame())).draws).toBe(initial.draws);
     const first = await step(page, 1, 1000 / fps);
     expect(displacement(initial, first)).toBeGreaterThan(0.1);
-    expect(displacement(initial, first)).toBeLessThan(3);
+    expect(displacement(initial, first)).toBeLessThan(9);
     const hovering = await step(page, fps - 1, 1000 / fps);
     expect(displacement(hovering, restAtOneSecond)).toBeGreaterThan(8);
+    expect(displacement(hovering, restAtOneSecond)).toBeLessThan(20.1);
+    const farDisplacements = hovering.points.flatMap(([x, y], index) => {
+      const [restX, restY] = restAtOneSecond.points[index];
+      return Math.hypot(restX - cursor.x, restY - cursor.y) > 85
+        ? [Math.hypot(x - restX, y - restY)]
+        : [];
+    });
+    expect(Math.max(...farDisplacements)).toBeLessThan(0.001);
+    expect(
+      hovering.points.some((point, index) => point[3] - restAtOneSecond.points[index][3] > 0.04),
+    ).toBe(true);
     entered.push(hovering);
 
-    await page.mouse.move(bounds.x + bounds.width * 0.1, bounds.y + bounds.height * 0.85);
+    await page.mouse.move(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.5);
     const reversing = await step(page, 1, 1000 / fps);
-    expect(displacement(hovering, reversing)).toBeLessThan(5);
+    expect(displacement(hovering, reversing)).toBeLessThan(9);
     expect(displacement(hovering, reversing)).toBeGreaterThan(0.1);
     await page.mouse.move(0, 0);
     const returned = await step(page, fps * 5 - 1, 1000 / fps);
@@ -132,7 +149,8 @@ test('mouse hover eases, reverses, and returns to rest at 60 and 144 Hz', async 
       ),
     ).toBe(true);
   }
-  expect(displacement(entered[0], entered[1])).toBeLessThan(0.0001);
+  expect(displacement(entered[0], entered[1])).toBeLessThan(0.3);
+  expect(displacement(entered[1], entered[2])).toBeLessThan(0.3);
 });
 
 test('touch input leaves the perspective unchanged while particles keep moving', async ({
@@ -151,6 +169,258 @@ test('touch input leaves the perspective unchanged while particles keep moving',
     clientY: bounds.y + bounds.height * 0.1,
   });
   expect(displacement(await step(page, 60), untouched)).toBeLessThan(0.0001);
+});
+
+async function moveOnGraphic(page: Page, x: number, y: number) {
+  const bounds = (await page.locator('.hero-graphic__surface').boundingBox())!;
+  await page.mouse.move(bounds.x + (x / 520) * bounds.width, bounds.y + (y / 500) * bounds.height);
+}
+
+async function slowParticleFlow(page: Page) {
+  // Isolate rotation from the traveling wave using the existing CSS timing controls.
+  await page.route('**/*.css', async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      body: (await response.text()).replace(
+        /(--motion-(?:ambient|pulse):)\s*[^;}]+/g,
+        (_match, prefix: string) => `${prefix}1000000000s`,
+      ),
+    });
+  });
+}
+
+test('grabbing pauses rotation, dragging persists, and release momentum decays', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Mouse gesture coverage.');
+  await installClock(page);
+  await slowParticleFlow(page);
+  const initial = await startClock(page);
+  const surface = page.locator('.hero-graphic__surface');
+  await expect(surface).toHaveCSS('cursor', 'grab');
+  await moveOnGraphic(page, 90, 40);
+  await page.mouse.down();
+  await expect(surface).toHaveCSS('cursor', 'grabbing');
+  expect(displacement(initial, await step(page, 60))).toBeLessThan(0.001);
+
+  let previous = await step(page);
+  for (let index = 1; index <= 18; index++) {
+    await moveOnGraphic(page, 90 + index * 15, 40);
+    const current = await step(page);
+    expect(displacement(previous, current)).toBeLessThan(16);
+    previous = current;
+  }
+  expect(displacement(initial, previous)).toBeGreaterThan(45);
+  await page.mouse.up();
+  await page.mouse.move(0, 0);
+  await expect(surface).toHaveCSS('cursor', 'grab');
+  expect(displacement(previous, await page.evaluate(() => window.captureHeroFrame()))).toBe(0);
+  const released = await step(page);
+  const releaseSpeed = displacement(previous, released);
+  expect(releaseSpeed).toBeGreaterThan(0.5);
+  expect(releaseSpeed).toBeLessThan(13);
+  const settled = await step(page, 150);
+  const settledSpeed = displacement(settled, await step(page));
+  expect(settledSpeed).toBeLessThan(releaseSpeed * 0.1);
+  expect(displacement(initial, settled)).toBeGreaterThan(45);
+  expect(settled.pending).toBe(1);
+
+  // Regrabbing arrests momentum at the visible angle without snapping to a target.
+  await moveOnGraphic(page, 90, 40);
+  const beforeGrab = await page.evaluate(() => window.captureHeroFrame());
+  await page.mouse.down();
+  expect(displacement(beforeGrab, await step(page, 30))).toBeLessThan(0.001);
+  await page.mouse.up();
+});
+
+test('one click produces an outward ripple that settles; a drag never produces a ripple', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Compare deterministic mouse gestures.');
+  await installClock(page);
+  const sampleCounts = [12, 15, 21, 120];
+  const sequences: CapturedFrame[][] = [];
+  for (const click of [false, true]) {
+    await page.mouse.move(0, 0);
+    await startClock(page);
+    await moveOnGraphic(page, 260, 250);
+    await page.mouse.down();
+    if (!click) await page.locator('.hero-graphic__surface').dispatchEvent('pointercancel');
+    await page.mouse.up();
+    await page.mouse.move(0, 0);
+    const frames = [];
+    for (const count of sampleCounts) frames.push(await step(page, count));
+    sequences.push(frames);
+  }
+  const radii: number[] = [];
+  for (let index = 0; index < 3; index++) {
+    const rest = sequences[0][index];
+    const ripple = sequences[1][index];
+    expect(displacement(rest, ripple)).toBeGreaterThan(0.4);
+    expect(displacement(rest, ripple)).toBeLessThan(7);
+    let weightedRadius = 0;
+    let totalWeight = 0;
+    ripple.points.forEach(([x, y], pointIndex) => {
+      const [restX, restY] = rest.points[pointIndex];
+      const weight = Math.hypot(x - restX, y - restY);
+      weightedRadius += Math.hypot(restX - 260, restY - 250) * weight;
+      totalWeight += weight;
+    });
+    radii.push(weightedRadius / totalWeight);
+  }
+  expect(radii[1]).toBeGreaterThan(radii[0] + 20);
+  expect(radii[2]).toBeGreaterThan(radii[1] + 30);
+  expect(displacement(sequences[0][3], sequences[1][3])).toBeLessThan(0.001);
+
+  const afterDrag: CapturedFrame[] = [];
+  for (const cancel of [false, true]) {
+    await startClock(page);
+    await moveOnGraphic(page, 260, 250);
+    await page.mouse.down();
+    await moveOnGraphic(page, 320, 250);
+    await step(page, 12);
+    // Returning to the starting point is still a drag, not a click.
+    await moveOnGraphic(page, 260, 250);
+    await step(page, 90);
+    if (cancel) await page.locator('.hero-graphic__surface').dispatchEvent('pointercancel');
+    await page.mouse.up();
+    await page.mouse.move(0, 0);
+    afterDrag.push(await step(page, 15));
+  }
+  expect(displacement(afterDrag[0], afterDrag[1])).toBeLessThan(0.001);
+});
+
+test('rapid reversals, pointer loss, resizing, and hidden time remain bounded', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Exercise interruptible mouse capture.');
+  await installClock(page);
+  await startClock(page);
+  const surface = page.locator('.hero-graphic__surface');
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await moveOnGraphic(page, 260, 250);
+  await page.mouse.down();
+  let previous = await step(page);
+  for (let index = 0; index < 24; index++) {
+    await moveOnGraphic(page, index % 2 ? 30 : 490, index % 3 ? 45 : 455);
+    const current = await step(page);
+    expect(displacement(previous, current)).toBeLessThan(20);
+    expect(current.pending).toBe(1);
+    expect(
+      current.points.every(
+        ([x, y, radius]) =>
+          Number.isFinite(x + y + radius) &&
+          x - radius > 0 &&
+          x + radius < 520 &&
+          y - radius > 0 &&
+          y + radius < 500,
+      ),
+    ).toBe(true);
+    previous = current;
+  }
+  // Pointer capture keeps a drag working outside the surface and releases cleanly.
+  await page.mouse.move(1200, 900);
+  await step(page);
+  await page.mouse.up();
+  await expect(surface).toHaveCSS('cursor', 'grab');
+  await moveOnGraphic(page, 260, 250);
+  await page.mouse.down();
+  await moveOnGraphic(page, 350, 260);
+  previous = await step(page);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  const hidden = await step(page, 10, 1000);
+  expect(hidden.draws).toBe(previous.draws);
+  expect(hidden.pending).toBe(0);
+  await expect(surface).toHaveCSS('cursor', 'grab');
+  await page.evaluate(() => {
+    Reflect.deleteProperty(document, 'hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  expect(displacement(previous, await step(page, 1, 10000))).toBe(0);
+  await page.mouse.up();
+
+  previous = await step(page, 10);
+  const count = previous.points.length;
+  await page.setViewportSize({ width: 1024, height: 1000 });
+  await page.waitForTimeout(100);
+  const resized = await step(page, 1, 0);
+  expect(resized.points.length).toBe(count);
+  expect(displacement(previous, resized)).toBe(0);
+  await surface.dispatchEvent('pointercancel');
+  const stalled = await step(page, 1, 30000);
+  expect(displacement(resized, stalled)).toBeLessThan(20);
+  expect(stalled.pending).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('native touch taps ripple, horizontal drags rotate, and vertical swipes scroll', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === 'desktop', 'Requires an emulated touch device.');
+  await installClock(page);
+  await startClock(page);
+  const untouched = await step(page, 15);
+  await startClock(page);
+  const surface = page.locator('.hero-graphic__surface');
+  await expect(surface).toHaveCSS('touch-action', 'pan-y pinch-zoom');
+  let bounds = (await surface.boundingBox())!;
+  await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  const tapped = await step(page, 15);
+  expect(displacement(untouched, tapped)).toBeGreaterThan(1);
+  expect(displacement(untouched, tapped)).toBeLessThan(7);
+
+  await startClock(page);
+  bounds = (await surface.boundingBox())!;
+  const initial = await step(page);
+  const session = await page.context().newCDPSession(page);
+  const startX = bounds.x + bounds.width * 0.35;
+  const startY = bounds.y + bounds.height * 0.5;
+  const scrollBefore = await page.evaluate(() => scrollY);
+  await session.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: startX, y: startY, id: 1 }],
+  });
+  for (let index = 1; index <= 16; index++) {
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: startX + bounds.width * 0.025 * index, y: startY, id: 1 }],
+    });
+    await step(page);
+  }
+  await expect(page.locator(graphicSelector)).toHaveAttribute('data-dragging');
+  const dragged = await step(page);
+  expect(displacement(initial, dragged)).toBeGreaterThan(40);
+  expect(await page.evaluate(() => scrollY)).toBe(scrollBefore);
+  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect(page.locator(graphicSelector)).not.toHaveAttribute('data-dragging');
+  expect(displacement(dragged, await step(page))).toBeGreaterThan(0.1);
+
+  await showGraphic(page);
+  bounds = (await surface.boundingBox())!;
+  const scrollStart = await page.evaluate(() => scrollY);
+  const x = bounds.x + bounds.width / 2;
+  const y = Math.min(bounds.y + bounds.height * 0.75, page.viewportSize()!.height - 30);
+  await session.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x, y, id: 1 }],
+  });
+  for (let index = 1; index <= 10; index++) {
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y: y - index * 15, id: 1 }],
+    });
+    await page.waitForTimeout(20);
+    await step(page);
+  }
+  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scrollStart + 60);
+  await expect(page.locator(graphicSelector)).not.toHaveAttribute('data-dragging');
+  await session.detach();
 });
 
 test('CSS seconds and milliseconds produce identical slow motion in the production bundle', async ({
@@ -273,6 +543,10 @@ test('reduced motion stays static and responds to preference changes', async ({ 
   await page.evaluate(() => new Promise(requestAnimationFrame));
   const initial = await sampleGraphic(page);
   await page.locator('.hero-graphic__surface').hover();
+  await page.mouse.down();
+  await moveOnGraphic(page, 390, 250);
+  await page.mouse.up();
+  await page.locator('.hero-graphic__surface').click();
   await page.waitForTimeout(250);
   expect(await sampleGraphic(page)).toBe(initial);
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);

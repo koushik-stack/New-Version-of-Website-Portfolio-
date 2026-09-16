@@ -9,6 +9,17 @@
   aspect-ratio: 520 / 500;
   /* Only the particles rotate; the canvas and hover region stay fixed. */
   contain: strict;
+  cursor: grab;
+  touch-action: pan-y pinch-zoom;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.hero-graphic[data-dragging] .hero-graphic__surface {
+  cursor: grabbing;
+}
+.hero-graphic:is([data-motion-state='paused'], [data-motion-state='reduced'])
+  .hero-graphic__surface {
+  cursor: default;
 }
 .hero-graphic__label {
   position: absolute;

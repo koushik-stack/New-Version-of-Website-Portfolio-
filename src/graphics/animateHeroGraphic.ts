@@ -1,9 +1,27 @@
 import { readMotionSettings, reducedMotionQuery } from '../motion/settings';
-import { createParticleField, fieldSize, type PointerPosition } from './particleField';
+import {
+  createParticleField,
+  fieldSize,
+  rippleDuration,
+  type FieldRotation,
+  type ParticleRipple,
+  type PointerPosition,
+} from './particleField';
 
 const pauseStorageKey = 'portfolio-motion-paused';
-const pointerResponse = 280;
 const fullTurn = Math.PI * 2;
+const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
+
+interface Gesture {
+  id: number;
+  touch: boolean;
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
+  started: number;
+  dragging: boolean;
+}
 
 export function initializeHeroGraphic(): () => void {
   const root = document.querySelector<HTMLElement>('[data-hero-graphic]');
@@ -14,10 +32,9 @@ export function initializeHeroGraphic(): () => void {
 
   const motion = readMotionSettings();
   const preference = window.matchMedia(reducedMotionQuery);
-  const pointerDevice = window.matchMedia('(hover: hover) and (pointer: fine)');
   const events = new AbortController();
   const { signal } = events;
-  const render = createParticleField(context);
+  const render = createParticleField(context, surface.getBoundingClientRect().width < 380);
   const label = button.querySelector<HTMLElement>('.motion-toggle__label')!;
   const pauseIcon = button.querySelector<HTMLElement>('.motion-toggle__pause')!;
   const playIcon = button.querySelector<HTMLElement>('.motion-toggle__play')!;
@@ -36,14 +53,22 @@ export function initializeHeroGraphic(): () => void {
   let size = { width: 0, height: 0 };
   let pixelRatio = 0;
   let bounds: DOMRect | null = null;
-  const pointer: PointerPosition = { x: 0, y: 0 };
-  const target: PointerPosition = { x: 0, y: 0 };
+  let pointer: PointerPosition | null = null;
+  let gesture: Gesture | null = null;
+  const rotation: FieldRotation = { yaw: 0, pitch: -0.16 };
+  const target: FieldRotation = { ...rotation };
+  const velocity: FieldRotation = { yaw: 0, pitch: 0 };
+  const input: FieldRotation = { yaw: 0, pitch: 0 };
+  const ripples: ParticleRipple[] = [];
 
-  function draw() {
+  const isVisible = () => inViewport && !document.hidden && size.width > 0 && size.height > 0;
+  const isRunning = () => isVisible() && !paused && !preference.matches;
+
+  function draw(delta = 0) {
     const canvas = surface!;
     const ctx = context!;
-    // Resize the backing store and redraw in the same frame. CSS owns layout;
-    // uniform scaling preserves the composition at every size and display DPR.
+    // CSS owns layout. Keep the same logical coordinates and particle identities
+    // across resizes; only the backing store and uniform projection scale change.
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     const width = Math.max(1, Math.round(size.width * ratio));
     const height = Math.max(1, Math.round(size.height * ratio));
@@ -63,16 +88,46 @@ export function initializeHeroGraphic(): () => void {
       (width - fieldSize.width * scale) / 2,
       (height - fieldSize.height * scale) / 2,
     );
-    render(
-      (elapsed / Math.max(1, motion.ambient)) * fullTurn,
-      (elapsed / Math.max(1, motion.pulse)) * fullTurn,
+    render({
+      phase: ((elapsed * 1000) / Math.max(1, motion.ambient)) * fullTurn,
+      pulse: ((elapsed * 1000) / Math.max(1, motion.pulse)) * fullTurn,
+      delta,
+      rotation,
       pointer,
-    );
+      ripples,
+    });
     needsDraw = false;
   }
 
-  const isVisible = () => inViewport && !document.hidden;
-  const isRunning = () => isVisible() && !paused && !preference.matches;
+  function advanceRotation(delta: number) {
+    if (!delta) return;
+    if (gesture || input.yaw || input.pitch) {
+      const follow = 1 - Math.exp(-delta * 26);
+      const response = 1 - Math.exp(-delta * 22);
+      for (const axis of ['yaw', 'pitch'] as const) {
+        const change = clamp((target[axis] - rotation[axis]) * follow, delta * 3);
+        rotation[axis] += change;
+        // Measure visible movement in the render clock, rather than noisy event
+        // timestamps. A flick released between frames is consumed here as well.
+        velocity[axis] += (clamp(change / delta, 1.8) - velocity[axis]) * response;
+      }
+    } else {
+      const decay = Math.exp(-delta * 3.6);
+      for (const axis of ['yaw', 'pitch'] as const) {
+        rotation[axis] += (velocity[axis] * (1 - decay)) / 3.6;
+        velocity[axis] *= decay;
+      }
+      rotation.yaw += delta * 0.018;
+      rotation.pitch = clamp(rotation.pitch, 0.9);
+    }
+    input.yaw = input.pitch = 0;
+    // Release from the visible angle: no stored target can pull the formation
+    // onward or back. Ambient motion and decaying momentum share this rotation.
+    if (!gesture) {
+      target.yaw = rotation.yaw;
+      target.pitch = rotation.pitch;
+    }
+  }
 
   function schedule() {
     if (frame === null && isVisible()) frame = requestAnimationFrame(tick);
@@ -81,21 +136,22 @@ export function initializeHeroGraphic(): () => void {
   function tick(timestamp: number) {
     frame = null;
     if (!isVisible()) return;
-    const running = isRunning();
-    if (!running) {
+    if (!isRunning()) {
       if (needsDraw) draw();
-      // A media preference can change before its change event is delivered.
       synchronize();
       return;
     }
-    // Hidden time never enters the clock; cap long foreground stalls too.
-    const delta = previousTime === null ? 0 : Math.min(timestamp - previousTime, 64);
+    // Hidden time never enters the clock. Bound foreground stalls as well, so
+    // particle damping, rotation, and ripples always advance together safely.
+    const delta = previousTime === null ? 0 : Math.min((timestamp - previousTime) / 1000, 0.05);
     previousTime = timestamp;
     elapsed += delta;
-    const damping = 1 - Math.exp(-delta / pointerResponse);
-    pointer.x += (target.x - pointer.x) * damping;
-    pointer.y += (target.y - pointer.y) * damping;
-    draw();
+    advanceRotation(delta);
+    for (let index = ripples.length - 1; index >= 0; index--) {
+      ripples[index].age += delta;
+      if (ripples[index].age >= rippleDuration) ripples.splice(index, 1);
+    }
+    draw(delta);
     schedule();
   }
 
@@ -129,21 +185,136 @@ export function initializeHeroGraphic(): () => void {
     pauseIcon.hidden = paused && !reduced;
     playIcon.hidden = !paused || reduced;
     if (!isRunning()) stop();
-    // Pausing and reduced motion freeze the current view, without a snap.
+    // Freeze the exact current view for pause/reduced motion, including offsets.
     if (isRunning() || needsDraw) schedule();
   }
 
-  const resetPointer = () => {
-    target.x = target.y = 0;
+  function releaseGesture() {
+    const id = gesture?.id;
+    gesture = null;
+    delete root!.dataset.dragging;
+    if (id !== undefined && surface!.hasPointerCapture(id)) surface!.releasePointerCapture(id);
+  }
+
+  function interrupt() {
+    releaseGesture();
+    pointer = null;
     bounds = null;
-  };
-  const updatePointer = (event: PointerEvent) => {
-    if (!pointerDevice.matches || event.pointerType === 'touch' || !isRunning()) return;
-    bounds ??= surface.getBoundingClientRect();
-    if (!bounds.width || !bounds.height) return;
-    target.x = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width - 0.5) * 2));
-    target.y = Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height - 0.5) * 2));
-  };
+    velocity.yaw = velocity.pitch = input.yaw = input.pitch = 0;
+    target.yaw = rotation.yaw;
+    target.pitch = rotation.pitch;
+  }
+
+  function locate(event: PointerEvent): PointerPosition | null {
+    bounds ??= surface!.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return null;
+    const x = event.clientX - bounds.left;
+    const y = event.clientY - bounds.top;
+    if (x < 0 || y < 0 || x > bounds.width || y > bounds.height) return null;
+    const scale = Math.min(bounds.width / fieldSize.width, bounds.height / fieldSize.height);
+    return {
+      x: (x - (bounds.width - fieldSize.width * scale) / 2) / scale,
+      y: (y - (bounds.height - fieldSize.height * scale) / 2) / scale,
+    };
+  }
+
+  function updatePointer(event: PointerEvent) {
+    if (!isRunning()) return;
+    if (event.pointerType !== 'touch') pointer = locate(event);
+    if (!gesture || event.pointerId !== gesture.id) return;
+    const dx = event.clientX - gesture.lastX;
+    const dy = event.clientY - gesture.lastY;
+    gesture.lastX = event.clientX;
+    gesture.lastY = event.clientY;
+    if (!gesture.dragging) {
+      const travelX = Math.abs(event.clientX - gesture.startX);
+      const travelY = Math.abs(event.clientY - gesture.startY);
+      if (Math.hypot(travelX, travelY) < (gesture.touch ? 8 : 4)) return;
+      // Let native pan-y/pinch-zoom claim vertical or multi-touch gestures.
+      if (gesture.touch && travelY >= travelX) {
+        interrupt();
+        return;
+      }
+      gesture.dragging = true;
+      root!.dataset.dragging = '';
+      surface!.setPointerCapture(event.pointerId);
+    }
+    bounds ??= surface!.getBoundingClientRect();
+    const yaw = rotation.yaw + clamp(target.yaw + (dx / bounds.width) * 2.8 - rotation.yaw, 0.65);
+    const pitch = clamp(target.pitch + (gesture.touch ? 0 : (dy / bounds.height) * 2.3), 0.9);
+    input.yaw += yaw - target.yaw;
+    input.pitch += pitch - target.pitch;
+    target.yaw = yaw;
+    target.pitch = pitch;
+  }
+
+  surface.addEventListener('pointerenter', updatePointer, { signal, passive: true });
+  surface.addEventListener('pointermove', updatePointer, { signal, passive: true });
+  surface.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (!event.isPrimary) {
+        interrupt();
+        return;
+      }
+      if (event.button !== 0 || !isRunning() || gesture) return;
+      interrupt();
+      gesture = {
+        id: event.pointerId,
+        touch: event.pointerType === 'touch',
+        startX: event.clientX,
+        startY: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        started: performance.now(),
+        dragging: false,
+      };
+      if (!gesture.touch) {
+        pointer = locate(event);
+        root.dataset.dragging = '';
+        surface.setPointerCapture(event.pointerId);
+      }
+    },
+    { signal, passive: true },
+  );
+  surface.addEventListener(
+    'pointerup',
+    (event) => {
+      if (!gesture || event.pointerId !== gesture.id) return;
+      const position = locate(event);
+      const travel = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
+      if (
+        !gesture.dragging &&
+        travel < (gesture.touch ? 8 : 4) &&
+        performance.now() - gesture.started < 450 &&
+        position &&
+        isRunning() &&
+        ripples.length < 4
+      ) {
+        ripples.push({ ...position, age: 0 });
+      }
+      pointer = gesture.touch ? null : position;
+      releaseGesture();
+    },
+    { signal, passive: true },
+  );
+  surface.addEventListener(
+    'pointerleave',
+    () => {
+      pointer = null;
+    },
+    { signal },
+  );
+  surface.addEventListener('pointercancel', interrupt, { signal });
+  surface.addEventListener(
+    'lostpointercapture',
+    () => {
+      if (gesture) interrupt();
+    },
+    { signal },
+  );
+  surface.addEventListener('dragstart', (event) => event.preventDefault(), { signal });
+
   const measure = () => {
     const rect = surface.getBoundingClientRect();
     bounds = null;
@@ -152,42 +323,38 @@ export function initializeHeroGraphic(): () => void {
       rect.height !== size.height ||
       pixelRatio !== Math.min(window.devicePixelRatio || 1, 2)
     ) {
+      interrupt();
+      previousTime = null;
       size = { width: rect.width, height: rect.height };
       needsDraw = true;
       schedule();
     }
-    // If IntersectionObserver is unavailable, keep a functional static/animated view.
     if (!observer) {
       inViewport = rect.bottom > 0 && rect.top < innerHeight;
       synchronize();
     }
   };
-  surface.addEventListener('pointerenter', updatePointer, { signal, passive: true });
-  surface.addEventListener('pointermove', updatePointer, { signal, passive: true });
-  surface.addEventListener('pointerleave', resetPointer, { signal });
-  surface.addEventListener('pointercancel', resetPointer, { signal });
   window.addEventListener(
     'scroll',
     () => {
-      bounds = null;
+      interrupt();
       if (!observer) measure();
     },
     { signal, passive: true, capture: true },
   );
+  window.addEventListener('resize', measure, { signal, passive: true });
   window.addEventListener(
-    'resize',
+    'blur',
     () => {
-      resetPointer();
-      measure();
+      interrupt();
+      previousTime = null;
     },
-    { signal, passive: true },
+    { signal },
   );
-  window.addEventListener('blur', resetPointer, { signal });
-  pointerDevice.addEventListener('change', resetPointer, { signal });
   document.addEventListener(
     'visibilitychange',
     () => {
-      resetPointer();
+      interrupt();
       synchronize();
     },
     { signal },
@@ -195,7 +362,7 @@ export function initializeHeroGraphic(): () => void {
   preference.addEventListener(
     'change',
     () => {
-      resetPointer();
+      interrupt();
       synchronize();
     },
     { signal },
@@ -204,7 +371,7 @@ export function initializeHeroGraphic(): () => void {
     'click',
     () => {
       paused = !paused;
-      resetPointer();
+      interrupt();
       try {
         sessionStorage.setItem(pauseStorageKey, String(paused));
       } catch {
@@ -220,7 +387,7 @@ export function initializeHeroGraphic(): () => void {
       ? null
       : new IntersectionObserver(([entry]) => {
           inViewport = entry.isIntersecting;
-          if (!inViewport) resetPointer();
+          if (!inViewport) interrupt();
           synchronize();
         });
   const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
@@ -232,6 +399,7 @@ export function initializeHeroGraphic(): () => void {
 
   return () => {
     stop();
+    releaseGesture();
     events.abort();
     observer?.disconnect();
     resizeObserver?.disconnect();

@@ -12,7 +12,8 @@ export const experience: Experience[] = [
     company: 'Anthropic',
     role: 'Senior Software Engineer',
     period: 'Current',
-    description: ['worked on worker services.', 'Worked on tokenization and encoding.'],
+    description: [
+    '', 'Worked on tokenization and encoding.'],
     focus: ['Machine learning', 'ML systems', 'Tokenization'],
   },
   {
