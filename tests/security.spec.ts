@@ -1,6 +1,38 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
+test('the browser sends the existing login cookie when fetching a protected production manifest', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await context.addCookies([
+    { name: 'test-deploy-access', value: 'signed-in', url: baseURL!, httpOnly: true },
+  ]);
+  let authenticatedRequest = false;
+  await page.route('**/manifest.json', async (route) => {
+    const headers = await route.request().allHeaders();
+    authenticatedRequest = headers.cookie?.includes('test-deploy-access=signed-in') ?? false;
+    if (!authenticatedRequest) {
+      await route.fulfill({ status: 401, contentType: 'text/html', body: 'Login required' });
+      return;
+    }
+    await route.fulfill({
+      contentType: 'application/manifest+json',
+      body: readFileSync('dist/manifest.json', 'utf8'),
+    });
+  });
+  await page.goto('/');
+  // Ask Chromium to fetch the real <link rel="manifest">, rather than using fetch()
+  // (whose default credential behavior is different from a manifest request).
+  const session = await context.newCDPSession(page);
+  const manifest = await session.send('Page.getAppManifest');
+  expect(authenticatedRequest).toBe(true);
+  expect(manifest.errors).toEqual([]);
+  expect(JSON.parse(manifest.data!)).toMatchObject({ short_name: 'Koushik', start_url: '/#home' });
+  await session.detach();
+});
+
 test('an anchor to a project interrupts its closing animation and reveals the destination', async ({
   page,
 }) => {
