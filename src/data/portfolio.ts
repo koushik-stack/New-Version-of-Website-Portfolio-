@@ -26,7 +26,7 @@ export const portfolio = {
     'Hello! I’m Koushik, a software engineer at Anthropic. I build machine learning models and improve API streaming performance on Claude.ai.',
     'Previously I have worked in Threap connect , Holotech and Pengiun',
     'oh! Iam also currently Studying Bachelors in Mechatronics at University of Sydney',
-    'My work spans machine learning, cloud infrastructure, and frontend development. I like moving between the bigger picture and the small details, whether I’m building a language interpreter or making a dashboard easier to use.',
+    'My work spans from  machine learning, to cloud infrastructure, to full stack development. I like moving between the bigger picture and the small details, whether I’m building a language interpreter or making a dashboard easier to use.',
     'Away from the editor, I’m usually exploring gaming, hardware, geography, history, economics, or politics. Curiosity tends to connect it all.',
   ],
   skills: ['Python', 'TypeScript', 'JavaScript', 'C / C++', 'React', 'SQL', 'AWS', 'Transformers', 'Java','GO'],
