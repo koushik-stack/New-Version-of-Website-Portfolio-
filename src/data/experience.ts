@@ -11,7 +11,7 @@ export const experience: Experience[] = [
   {
     company: 'Anthropic',
     role: ' Software Engineer II ',
-    period: 'Current',
+    period: 'September 2025-Current',
     description: [
     'Led optimization of core tokenization and API infrastructure, driving a 25% performance improvement and significantly decreasing streaming latency for production systems', 
     'Engineered large-scale training efficiencies, increasing context window capacity by 9% and reducing compute costs through advanced ML systems optimization.', 
@@ -29,7 +29,7 @@ export const experience: Experience[] = [
   {
     company: 'Pengiun Solutions (Remote) ',
     role: 'Software Development Engineer',
-    period: 'January 2021- Auguest 2023',
+    period: 'January 2021 - August 2023',
     description: ['Engineered and maintained responsive web and mobile applications using React and React Native, improving cross-platform user engagement (Consist of 1.3 billons of request per daily) ', 
     'Optimized NLP models for an AI-driven support chatbot, boosting model efficiency and decreasing inference latency by 6% to ensure seamless, real-time customer interactions ',],
     focus: ['Software Engineering', 'Machine learning', 'NLP'],
