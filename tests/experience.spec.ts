@@ -1,272 +1,384 @@
-import { expect, test, type Locator } from '@playwright/test';
+﻿import { expect, test, type Locator, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { experience } from '../src/data/experience';
 
-const entriesSelector = '#experience .experience-entry';
+const tabsSelector = '#experience [role="tab"]';
+const panelsSelector = '#experience [role="tabpanel"]';
 
-async function sampleToggle(panel: Locator) {
-  return panel.evaluate(async (element) => {
-    const toggle = document.getElementById(element.getAttribute('aria-labelledby')!)!;
-    const samples: { height: number; opacity: number }[] = [];
-    const sample = () => ({
-      height: element.getBoundingClientRect().height,
-      opacity: Number(getComputedStyle(element).opacity),
-    });
-    samples.push(sample());
-    toggle.click();
-    samples.push(sample());
-    const durations = element
-      .getAnimations()
-      .map((animation) => animation.effect!.getTiming().duration);
-    const start = performance.now();
-    await new Promise<void>((resolve) => {
-      function record() {
-        samples.push(sample());
-        if (performance.now() - start < 450) requestAnimationFrame(record);
-        else resolve();
-      }
-      requestAnimationFrame(record);
-    });
-    return { samples, durations };
-  });
-}
-
-async function expectFullyExpanded(panel: Locator) {
+async function expectSettled(page: Page, index: number) {
+  const panel = page.locator(panelsSelector).nth(index);
+  await expect(page.locator(tabsSelector).nth(index)).toHaveAttribute('aria-selected', 'true');
   await expect(panel).toBeVisible();
   await expect(panel).toHaveCSS('opacity', '1');
-  const dimensions = await panel.evaluate((element) => {
-    const content = element.firstElementChild as HTMLElement;
+  await expect(page.locator('#experience .experience-panels')).not.toHaveAttribute(
+    'style',
+    /height/,
+  );
+  const geometry = await panel.evaluate((element) => {
+    const stage = element.parentElement!;
     return {
       height: element.getBoundingClientRect().height,
-      contentHeight: content.scrollHeight,
-      clipped: content.scrollHeight > content.clientHeight,
+      stageHeight: stage.getBoundingClientRect().height,
+      clipped: element.scrollHeight > element.clientHeight + 1,
+      overflow: getComputedStyle(stage).overflow,
+      visiblePanels: stage.querySelectorAll('.is-visible').length,
     };
   });
-  expect(dimensions.height).toBeGreaterThan(0);
-  expect(Math.abs(dimensions.height - dimensions.contentHeight)).toBeLessThanOrEqual(1);
-  expect(dimensions.clipped).toBe(false);
+  expect(geometry.height).toBeGreaterThan(0);
+  expect(Math.abs(geometry.height - geometry.stageHeight)).toBeLessThan(1);
+  expect(geometry.clipped).toBe(false);
+  expect(geometry.overflow).toBe('visible');
+  expect(geometry.visiblePanels).toBe(1);
 }
 
-test('every experience entry keeps its summary visible and opens independently by mouse or touch', async ({
+async function waitForEntrance(page: Page) {
+  await expect
+    .poll(() =>
+      page
+        .locator('#experience')
+        .evaluate((element) => element.getAnimations({ subtree: true }).length),
+    )
+    .toBe(0);
+}
+
+async function sampleSwitches(stage: Locator, sequence: number[], interval = 90) {
+  return stage.evaluate(
+    async (element, { sequence, interval }) => {
+      const tabs = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('#experience [role="tab"]'),
+      );
+      const panels = Array.from(element.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
+      const timing = new Map<Animation, EffectTiming>();
+      const snapshot = () => {
+        const bounds = element.getBoundingClientRect();
+        const painted = panels.filter(
+          (panel) =>
+            getComputedStyle(panel).visibility === 'visible' &&
+            Number(getComputedStyle(panel).opacity) > 0.001,
+        );
+        for (const target of [element, ...panels]) {
+          for (const animation of target.getAnimations())
+            timing.set(animation, animation.effect!.getTiming());
+        }
+        return {
+          height: bounds.height,
+          opacity: panels.map((panel) => Number(getComputedStyle(panel).opacity)),
+          painted: painted.length,
+          contained: painted.every(
+            (panel) => panel.getBoundingClientRect().bottom <= bounds.bottom + 1,
+          ),
+          nextSectionClear: painted.every(
+            (panel) =>
+              panel.getBoundingClientRect().bottom <=
+              document.querySelector('#projects')!.getBoundingClientRect().top,
+          ),
+        };
+      };
+      const samples = [snapshot()];
+      const jumps: number[] = [];
+      let index = 0;
+      const start = performance.now();
+      const click = () => {
+        const before = snapshot();
+        tabs[sequence[index++]].click();
+        const after = snapshot();
+        jumps.push(Math.abs(after.height - before.height));
+        samples.push(after);
+      };
+      click();
+      await new Promise<void>((resolve) => {
+        function record() {
+          const elapsed = performance.now() - start;
+          samples.push(snapshot());
+          if (index < sequence.length && elapsed >= index * interval) click();
+          if (elapsed < (sequence.length - 1) * interval + 1000) requestAnimationFrame(record);
+          else resolve();
+        }
+        requestAnimationFrame(record);
+      });
+      return { samples, jumps, timing: [...timing.values()] };
+    },
+    { sequence, interval },
+  );
+}
+
+test('company tabs preserve every role, date, contribution and tag in the original order', async ({
   page,
   hasTouch,
 }) => {
   await page.goto('/#experience');
-  const entries = page.locator(entriesSelector);
-  await expect(entries).toHaveCount(experience.length);
-  const controlIds: string[] = [];
+  const tabs = page.locator(tabsSelector);
+  const panels = page.locator(panelsSelector);
+  await expect(tabs).toHaveText(experience.map((entry) => entry.company));
+  await expect(panels).toHaveCount(experience.length);
+  await expectSettled(page, 0);
+  await expect(page.locator('#experience-heading')).toHaveText('Where I’ve contributed');
 
   for (const [index, entry] of experience.entries()) {
-    const item = entries.nth(index);
-    const toggle = item.getByRole('button', { name: entry.company, exact: true });
-    const panel = item.locator('.experience-entry__details');
-    await expect(toggle).toHaveAttribute('aria-expanded', String(index === 0));
-    await expect(item.getByRole('heading', { name: entry.company, exact: true })).toBeVisible();
-    await expect(item.locator('.experience-entry__role')).toHaveText(entry.role);
-    await expect(item.locator('.experience-entry__role')).toBeVisible();
-    await expect(item.locator('.experience-entry__period')).toHaveText(entry.period);
-    await expect(item.locator('.experience-entry__period')).toBeVisible();
-    await expect(item.locator('.experience-entry__description li')).toHaveText(entry.description);
-    await expect(item.locator('.tag-list li')).toHaveText(entry.focus);
-    const controlId = (await toggle.getAttribute('aria-controls'))!;
-    controlIds.push(controlId);
-    await expect(panel).toHaveAttribute('id', controlId);
-    if (index === 0) await expectFullyExpanded(panel);
-    else await expect(panel).toBeHidden();
-  }
-  expect(new Set(controlIds).size).toBe(experience.length);
-
-  for (let index = 1; index < experience.length; index++) {
-    const toggle = entries.nth(index).getByRole('button');
-    if (hasTouch) await toggle.tap();
-    else await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expectFullyExpanded(entries.nth(index).locator('.experience-entry__details'));
-  }
-  await expect(page.locator(`${entriesSelector} button[aria-expanded="true"]`)).toHaveCount(
-    experience.length,
-  );
-
-  for (let index = 0; index < experience.length; index++) {
-    const item = entries.nth(index);
-    const toggle = item.getByRole('button');
-    if (hasTouch) await toggle.tap();
-    else await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(item.locator('.experience-entry__details')).toBeHidden();
-    await expect(item.getByRole('heading')).toBeVisible();
-    await expect(item.locator('.experience-entry__role')).toBeVisible();
-    await expect(item.locator('.experience-entry__period')).toBeVisible();
-    await expect(page.locator(`${entriesSelector} button[aria-expanded="true"]`)).toHaveCount(
-      experience.length - index - 1,
+    const tab = tabs.nth(index);
+    const panel = panels.nth(index);
+    expect(await tab.getAttribute('aria-controls')).toBe(await panel.getAttribute('id'));
+    expect(await panel.getAttribute('aria-labelledby')).toBe(await tab.getAttribute('id'));
+    if (hasTouch) await tab.tap();
+    else await tab.click();
+    await expectSettled(page, index);
+    await expect(panel.getByRole('heading')).toHaveText(
+      `${entry.role.trim()} @ ${entry.company.trim()}`,
+    );
+    await expect(panel.locator('.experience-entry__role')).toHaveText(entry.role);
+    await expect(panel.locator('.experience-entry__period')).toHaveText(entry.period);
+    await expect(panel.locator('.experience-entry__description li')).toHaveText(entry.description);
+    await expect(panel.locator('.tag-list li')).toHaveText(entry.focus);
+    await expect(page.locator('#experience [role="tab"][aria-selected="true"]')).toHaveCount(1);
+    await expect(page.getByRole('tabpanel')).toHaveCount(1);
+    await expect(page.locator('#experience [role="tabpanel"][inert]')).toHaveCount(
+      experience.length - 1,
     );
   }
 });
 
-test('experience headings support Tab, Shift+Tab, Enter, and Space with visible focus', async ({
+test('tabs support arrows, wraparound, Home, End, Enter, Space and visible keyboard focus', async ({
   page,
 }) => {
   await page.goto('/#experience');
-  const toggles = page.locator(`${entriesSelector} button`);
-  await toggles.first().focus();
-  await expect(toggles.first()).toHaveCSS('outline-style', 'solid');
-  await page.keyboard.press('Enter');
-  await expect(toggles.first()).toHaveAttribute('aria-expanded', 'false');
-  await expect(toggles.first()).toBeFocused();
+  const tabs = page.locator(tabsSelector);
+  const horizontal = page.viewportSize()!.width <= 767;
+  const next = horizontal ? 'ArrowRight' : 'ArrowDown';
+  const previous = horizontal ? 'ArrowLeft' : 'ArrowUp';
+  await tabs.first().focus();
+  await expect(tabs.first()).toHaveCSS('outline-style', 'solid');
+  await page.keyboard.press(previous);
+  await expect(tabs.last()).toBeFocused();
+  await expectSettled(page, experience.length - 1);
+  await page.keyboard.press(next);
+  await expect(tabs.first()).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(tabs.last()).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(tabs.first()).toBeFocused();
+  await page.keyboard.press(next);
+  await expect(tabs.nth(1)).toBeFocused();
+  await expect(tabs.nth(1)).toHaveCSS('outline-style', 'solid');
   await page.keyboard.press('Tab');
-  await expect(toggles.nth(1)).toBeFocused();
-  await page.keyboard.press('Space');
-  await expect(toggles.nth(1)).toHaveAttribute('aria-expanded', 'true');
-  await expectFullyExpanded(
-    page.locator(entriesSelector).nth(1).locator('.experience-entry__details'),
-  );
-  await page.keyboard.press('Tab');
-  await expect(toggles.nth(2)).toBeFocused();
+  await expect(page.locator(panelsSelector).nth(1)).toBeFocused();
   await page.keyboard.press('Shift+Tab');
-  await expect(toggles.nth(1)).toBeFocused();
+  await expect(tabs.nth(1)).toBeFocused();
+  await tabs.nth(2).focus();
+  await page.keyboard.press('Enter');
+  await expectSettled(page, 2);
+  await tabs.nth(3).focus();
   await page.keyboard.press('Space');
-  await expect(toggles.nth(1)).toHaveAttribute('aria-expanded', 'false');
-  await expect(toggles.first()).toHaveAttribute('aria-expanded', 'false');
+  await expectSettled(page, 3);
+  await expect(page.locator('#experience [role="tab"][tabindex="0"]')).toHaveCount(1);
+
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.keyboard.press('Home');
+  // Keyboard users can enter the new panel without waiting for its reveal.
+  await page.keyboard.press('Tab');
+  await expect(page.locator(panelsSelector).first()).toBeFocused();
+  await expectSettled(page, 0);
 });
 
-test('experience height and opacity animate in both directions over 350 ms without truncating long content', async ({
+test('desktop columns and mobile scrolling stay aligned without page overflow', async ({
   page,
-}) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
+}, testInfo) => {
   await page.goto('/#experience');
-  const entry = page.locator(entriesSelector).nth(1);
-  const panel = entry.locator('.experience-entry__details');
-  await entry.evaluate((element) => element.scrollIntoView({ behavior: 'instant' }));
-  await panel.locator('.experience-entry__description').evaluate((element) => {
-    const bullet = document.createElement('li');
-    bullet.textContent =
-      'Longer experience descriptions should always remain fully readable. '.repeat(80);
-    element.append(bullet);
-  });
-
-  const opening = await sampleToggle(panel);
-  expect(opening.durations.length).toBeGreaterThanOrEqual(2);
-  expect(opening.durations.every((duration) => duration === 350)).toBe(true);
-  expect(opening.samples[0].height).toBe(0);
-  expect(opening.samples[1].height).toBeLessThan(1);
-  const fullHeight = opening.samples.at(-1)!.height;
-  expect(fullHeight).toBeGreaterThan(350);
-  expect(
-    opening.samples.filter((sample) => sample.height > 0 && sample.height < fullHeight).length,
-  ).toBeGreaterThan(3);
-  expect(opening.samples.some((sample) => sample.opacity > 0 && sample.opacity < 1)).toBe(true);
-  await expectFullyExpanded(panel);
-  await expect(entry.locator('.experience-entry__chevron')).toHaveCSS(
-    'transform',
-    'matrix(-1, 0, 0, -1, 0, 0)',
-  );
-
-  const closing = await sampleToggle(panel);
-  expect(Math.abs(closing.samples[1].height - fullHeight)).toBeLessThan(1);
-  expect(
-    closing.samples.filter((sample) => sample.height > 0 && sample.height < fullHeight).length,
-  ).toBeGreaterThan(3);
-  expect(closing.samples.some((sample) => sample.opacity > 0 && sample.opacity < 1)).toBe(true);
-  expect(closing.samples.at(-1)).toEqual({ height: 0, opacity: 0 });
-  await expect(panel).toBeHidden();
-  await expect(entry.locator('.experience-entry__chevron')).toHaveCSS('transform', 'none');
-});
-
-test('experience animation reverses smoothly and fits content after resizing', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.goto('/#experience');
-  const panel = page.locator(entriesSelector).nth(1).locator('.experience-entry__details');
-  const reversals = await panel.evaluate(async (element) => {
-    const toggle = document.getElementById(element.getAttribute('aria-labelledby')!)!;
-    const changes: number[] = [];
-    const waitForFrames = (duration: number) =>
-      new Promise<void>((resolve) => {
-        const start = performance.now();
-        function frame() {
-          if (performance.now() - start < duration) requestAnimationFrame(frame);
-          else resolve();
-        }
-        requestAnimationFrame(frame);
-      });
-    element.getBoundingClientRect();
-    toggle.click();
-    for (let index = 0; index < 2; index++) {
-      await waitForFrames(100);
-      const before = element.getBoundingClientRect().height;
-      toggle.click();
-      changes.push(Math.abs(element.getBoundingClientRect().height - before));
+  const horizontal = page.viewportSize()!.width <= 767;
+  const list = page.getByRole('tablist', { name: 'Companies' });
+  await expect(list).toHaveAttribute('aria-orientation', horizontal ? 'horizontal' : 'vertical');
+  for (const index of [0, 3]) {
+    await page.locator(tabsSelector).nth(index).click();
+    await expectSettled(page, index);
+    const geometry = await page.locator('#experience').evaluate((section) => {
+      const list = section.querySelector<HTMLElement>('[role="tablist"]')!;
+      const tab = section.querySelector<HTMLElement>('[aria-selected="true"]')!;
+      const panel = section.querySelector<HTMLElement>('.experience-entry.is-visible')!;
+      const bounds = (element: Element) => element.getBoundingClientRect().toJSON();
+      return {
+        list: bounds(list),
+        tab: bounds(tab),
+        panel: bounds(panel),
+        scrollable: list.scrollWidth > list.clientWidth,
+        pageOverflow: document.documentElement.scrollWidth > innerWidth,
+        indicator: getComputedStyle(tab, '::before').backgroundColor,
+        companyColor: getComputedStyle(panel.querySelector('.experience-entry__company')!).color,
+      };
+    });
+    expect(geometry.pageOverflow).toBe(false);
+    expect(geometry.indicator).toBe('rgb(120, 230, 195)');
+    expect(geometry.companyColor).toBe(geometry.indicator);
+    if (horizontal) {
+      expect(geometry.scrollable).toBe(true);
+      expect(geometry.list.bottom).toBeLessThan(geometry.panel.top);
+      expect(Math.abs(geometry.list.left - geometry.panel.left)).toBeLessThan(1);
+      expect(geometry.tab.left).toBeGreaterThanOrEqual(geometry.list.left - 1);
+      expect(geometry.tab.right).toBeLessThanOrEqual(geometry.list.right + 1);
+    } else {
+      expect(geometry.scrollable).toBe(false);
+      expect(geometry.list.right).toBeLessThan(geometry.panel.left);
+      expect(Math.abs(geometry.list.top - geometry.panel.top)).toBeLessThanOrEqual(10);
     }
-    return changes;
-  });
-  expect(reversals.every((change) => change < 1)).toBe(true);
-  await expectFullyExpanded(panel);
+    await page
+      .locator('#experience')
+      .screenshot({ path: testInfo.outputPath(`experience-${index}.png`) });
+  }
+});
+
+test('height and content keep the 350 ms reveal without clipping or overlapping either panel', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/#experience');
+  await waitForEntrance(page);
+  const stage = page.locator('#experience .experience-panels');
+  await page
+    .locator(panelsSelector)
+    .nth(1)
+    .locator('.experience-entry__description')
+    .evaluate((list) => {
+      const bullet = document.createElement('li');
+      bullet.textContent =
+        'Longer contributions remain readable while switching companies. '.repeat(20);
+      list.append(bullet);
+    });
+  for (const index of [1, 3]) {
+    const transition = await sampleSwitches(stage, [index]);
+    expect(transition.jumps.every((jump) => jump < 1)).toBe(true);
+    expect(transition.timing.length).toBeGreaterThanOrEqual(3);
+    for (const timing of transition.timing) {
+      expect(timing.duration).toBe(350);
+      expect(timing.easing).toBe('cubic-bezier(0.25, 0.85, 0.3, 1)');
+    }
+    expect(
+      transition.samples.every(
+        (sample) => sample.painted <= 1 && sample.contained && sample.nextSectionClear,
+      ),
+    ).toBe(true);
+    expect(
+      transition.samples.some((sample) => sample.opacity[index] > 0 && sample.opacity[index] < 1),
+    ).toBe(true);
+    const heights = transition.samples.map((sample) => sample.height);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(100);
+    expect(new Set(heights).size).toBeGreaterThan(4);
+    await expectSettled(page, index);
+  }
+});
+
+test('rapid switching and reversals settle on the last company without height jumps or stale panels', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/#experience');
+  await waitForEntrance(page);
+  const stage = page.locator('#experience .experience-panels');
+  for (const interval of [90, 400]) {
+    const transition = await sampleSwitches(stage, [1, 2, 0, 3, 1, 3], interval);
+    expect(transition.jumps.every((jump) => jump < 1)).toBe(true);
+    expect(
+      transition.samples.every(
+        (sample) => sample.painted <= 1 && sample.contained && sample.nextSectionClear,
+      ),
+    ).toBe(true);
+    await expectSettled(page, 3);
+  }
+});
+
+test('panels recover their natural height when resized during a transition', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/#experience');
+  await waitForEntrance(page);
+  await page
+    .locator(tabsSelector)
+    .nth(1)
+    .evaluate((tab) => (tab as HTMLButtonElement).click());
   await page.setViewportSize({ width: 320, height: 740 });
-  await expectFullyExpanded(panel);
+  await expectSettled(page, 1);
+  await expect(page.getByRole('tablist')).toHaveAttribute('aria-orientation', 'horizontal');
+  await page
+    .locator(tabsSelector)
+    .nth(3)
+    .evaluate((tab) => (tab as HTMLButtonElement).click());
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await expectFullyExpanded(panel);
+  await expectSettled(page, 3);
+  await expect(page.getByRole('tablist')).toHaveAttribute('aria-orientation', 'vertical');
 });
 
-test('reduced motion settles experience panels immediately, including preference changes during animation', async ({
+test('reduced motion settles immediately and cancels pending switches when the preference changes', async ({
   page,
 }) => {
   await page.goto('/#experience');
-  const entry = page.locator(entriesSelector).nth(1);
-  const panel = entry.locator('.experience-entry__details');
-  const toggle = entry.getByRole('button');
-  const immediate = await panel.evaluate((element) => {
-    const button = document.getElementById(element.getAttribute('aria-labelledby')!)!;
-    button.click();
-    const opened = {
-      height: element.getBoundingClientRect().height,
-      opacity: getComputedStyle(element).opacity,
+  const immediate = await page
+    .locator(tabsSelector)
+    .nth(1)
+    .evaluate((tab) => {
+      (tab as HTMLButtonElement).click();
+      const panel = document.querySelector<HTMLElement>('#experience [aria-hidden="false"]')!;
+      return {
+        opacity: getComputedStyle(panel).opacity,
+        height: panel.getBoundingClientRect().height,
+      };
+    });
+  expect(immediate.opacity).toBe('1');
+  expect(immediate.height).toBeGreaterThan(0);
+  await expectSettled(page, 1);
+  for (const index of [3, 0]) {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page
+      .locator(tabsSelector)
+      .nth(index)
+      .evaluate((tab) => (tab as HTMLButtonElement).click());
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expectSettled(page, index);
+    expect(
+      await page
+        .locator('#experience')
+        .evaluate((element) => element.getAnimations({ subtree: true }).length),
+    ).toBe(0);
+  }
+});
+
+test('the section retains its entrance motion and remains usable without the entrance animation API', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.addInitScript(() => {
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (keyframes, options) {
+      const animation = animate.call(this, keyframes, options);
+      if (this instanceof HTMLElement && this.matches('#experience [data-reveal]')) {
+        this.dataset.entrance = JSON.stringify({
+          keyframes,
+          options: animation.effect!.getTiming(),
+        });
+      }
+      return animation;
     };
-    button.click();
-    const closed = {
-      height: element.getBoundingClientRect().height,
-      opacity: getComputedStyle(element).opacity,
-    };
-    return { opened, closed };
   });
-  expect(immediate.opened.height).toBeGreaterThan(0);
-  expect(immediate.opened.opacity).toBe('1');
-  expect(immediate.closed).toEqual({ height: 0, opacity: '0' });
-  await expect(panel).toBeHidden();
-  expect(await entry.evaluate((element) => element.getAnimations({ subtree: true }).length)).toBe(
-    0,
+  await page.goto('/#experience');
+  for (const selector of ['.section-heading', '.experience-companies', '.experience-details']) {
+    const target = page.locator(`#experience ${selector}`);
+    await expect(target).toHaveAttribute('data-entrance');
+    const entrance = JSON.parse((await target.getAttribute('data-entrance'))!);
+    expect(entrance.options.duration).toBe(600);
+    expect(entrance.options.easing).toBe('cubic-bezier(0.25, 0.85, 0.3, 1)');
+    expect(entrance.keyframes[0]).toEqual({ opacity: 0, transform: 'translateY(12px)' });
+  }
+  await page.addInitScript(() =>
+    Object.defineProperty(Element.prototype, 'animate', { value: undefined }),
   );
-
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await toggle.evaluate((element) => (element as HTMLButtonElement).click());
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expectFullyExpanded(panel);
-  expect(await entry.evaluate((element) => element.getAnimations({ subtree: true }).length)).toBe(
-    0,
-  );
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await toggle.evaluate((element) => (element as HTMLButtonElement).click());
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(panel).toBeHidden();
-  expect(await panel.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await page.reload();
+  await page.locator(tabsSelector).nth(2).click();
+  await expectSettled(page, 2);
 });
 
-test('experience buttons and panels have accessible semantics in collapsed and expanded states', async ({
-  page,
-}) => {
+test('company tabs and selected details pass the accessibility audit', async ({ page }) => {
   await page.goto('/#experience');
-  const audit = () =>
-    new AxeBuilder({ page })
+  for (const index of [0, 3]) {
+    await page.locator(tabsSelector).nth(index).click();
+    const audit = await new AxeBuilder({ page })
       .include('#experience')
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
       .analyze();
-  expect((await audit()).violations).toEqual([]);
-  for (const toggle of await page.locator(`${entriesSelector} button`).all()) {
-    if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
+    expect(audit.violations).toEqual([]);
   }
-  await expect(page.locator(`${entriesSelector} button[aria-expanded="true"]`)).toHaveCount(
-    experience.length,
-  );
-  expect((await audit()).violations).toEqual([]);
 });

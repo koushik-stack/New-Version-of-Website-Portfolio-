@@ -23,7 +23,7 @@ export const portfolio = {
     'I build software across machine learning, developer tools, and the web. I enjoy turning complex ideas into useful, thoughtful experiences.',
   focus: ['Software engineering', 'Machine learning', 'Creative exploration'],
   about: [
-    'Hello! I’m Koushik, a software engineer at Anthropic. I build machine learning models and and optimize API streaming performance on on Claude.ai.',
+    'Hello! I’m Koushik, a software engineer at Anthropic. I build machine learning models and  optimize API streaming performance on  Claude.ai.',
     'Previously, I worked at ThreadConnect, Holotech, and Penguin Solutions',
     'I am also currently pursuing a Bachelor degree in Mechatronics at the University of Sydney',
     'My work spans machine learning, cloud infrastructure, and full-stack development. I enjoy navigating both the bigger picture and the small details whether that means building a language interpreter or refining a user dashboard.',

@@ -138,8 +138,8 @@ test('production security headers allow the site and its animations while blocki
   await project.locator('summary').click();
   await expect(project).not.toHaveAttribute('open');
   const experience = page.locator('.experience-entry').nth(1);
-  await experience.getByRole('button').click();
-  await expect(experience.locator('.experience-entry__details')).toHaveCSS('opacity', '1');
+  await page.locator('#experience [role="tab"]').nth(1).click();
+  await expect(experience).toHaveCSS('opacity', '1');
   expect(await page.locator('html').getAttribute('data-csp-violations')).toBeNull();
   expect(errors).toEqual([]);
 

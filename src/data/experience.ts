@@ -20,7 +20,7 @@ export const experience: Experience[] = [
   },
   {
     company: ' Holotech',
-    role: 'Engineering Manager ',
+    role: 'Contract Engineering Manager ',
     period: 'June 2025 - August 2025',
     description: ['Accelerated project delivery speed by 9% and reduced system downtime by 7% by implementing streamlined workflows and rigorous engineering oversight ', 
     'Spearheaded the deployment of two new architectural models into production, significantly accelerating innovation and system reliability for a millions of active users ','Boosted team efficiency by 15% through targeted mentorship and process improvements, while simultaneously improving quality performance by 5%'],
